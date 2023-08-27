@@ -3,53 +3,24 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
 type MacModel struct {
-	Name       string
-	Identifier string
+	Name       string `json:"name"`
+	Identifier string `json:"identifier"`
 }
 
 func GetMacModel() string {
 	return "Mac"
 }
 
-func getUrl(url string) string {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	// 设置User-Agent来模拟Chrome浏览器
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Safari/537.36")
-
-	// 设置一些其他常见请求头
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9")
-	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
-	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("Connection", "keep-alive")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-
-	return string(body)
-}
-
+// 获取最新的JSON文件
 func GenerateModelsJson() {
 	url := "https://everymac.com/systems/by_capability/mac-specs-by-machine-model-machine-id.html"
 
@@ -111,6 +82,51 @@ func GenerateModelsJson() {
 	fmt.Println("done.")
 }
 
+func GetMacInfo() string {
+	out, err := exec.Command("sysctl", "-n", "hw.model").Output()
+	if err != nil {
+		fmt.Printf("Failed to get model: %v\n", err)
+		return ""
+	}
+	identifier := strings.TrimSpace(string(out))
+
+	models := []MacModel{}
+
+	jsonFile := "mac-models.json"
+	data, err := os.ReadFile(jsonFile)
+	if err != nil {
+		fmt.Printf("Failed to read file: %v\n", err)
+		return ""
+	}
+	err = json.Unmarshal(data, &models)
+	if err != nil {
+		fmt.Printf("Failed to unmarshal file: %v\n", err)
+		return ""
+	}
+
+	for _, model := range models {
+		if model.Identifier == identifier {
+			return model.Name
+		}
+	}
+
+	fmt.Println("Not found.")
+	return ""
+}
+
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
 func main() {
-	GenerateModelsJson()
+	jsonFile := "mac-models.json"
+	if !fileExists(jsonFile) {
+		GenerateModelsJson()
+	}
+	var modelName = GetMacInfo()
+	fmt.Println("Current Mac model: " + modelName)
 }
